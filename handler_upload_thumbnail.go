@@ -2,11 +2,15 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
+
+const maxMemory = 10 << 20
+const thumnailFileKey = "thumbnail"
 
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
 	videoIDString := r.PathValue("videoID")
@@ -28,10 +32,44 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
+	if err := r.ParseMultipartForm(maxMemory); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
+		return
+	}
+	file, fileHeader, err := r.FormFile(thumnailFileKey)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
+		return
+	}
+	fileByte, err := io.ReadAll(file)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
+		return
+	}
+	videoMeta, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
+		return
+	}
+	if videoMeta.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "User does not own targeted video", err)
+		return
+	}
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	thumbnail := thumbnail{
+		data:      fileByte,
+		mediaType: fileHeader.Header.Get("Content-Type"),
+	}
+	videoThumbnails[videoID] = thumbnail
+
+	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID)
+	videoMeta.ThumbnailURL = &thumbnailURL
+	if err = cfg.db.UpdateVideo(videoMeta); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, videoMeta)
 }
