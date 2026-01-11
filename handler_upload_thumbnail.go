@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -43,11 +44,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
 		return
 	}
+	mediaType := fileHeader.Header.Get("Content-Type")
 	fileByte, err := io.ReadAll(file)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
 		return
 	}
+	fileBase64 := base64.StdEncoding.EncodeToString(fileByte)
 	videoMeta, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
@@ -58,13 +61,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	thumbnail := thumbnail{
-		data:      fileByte,
-		mediaType: fileHeader.Header.Get("Content-Type"),
-	}
-	videoThumbnails[videoID] = thumbnail
-
-	thumbnailURL := fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID)
+	thumbnailURL := fmt.Sprintf("data:%s;base64,%s", mediaType, fileBase64)
 	videoMeta.ThumbnailURL = &thumbnailURL
 	if err = cfg.db.UpdateVideo(videoMeta); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
