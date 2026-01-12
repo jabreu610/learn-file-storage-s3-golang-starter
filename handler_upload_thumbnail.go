@@ -53,6 +53,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
 		return
 	}
+	defer file.Close()
 	mtype, err := mimetype.DetectReader(file)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
