@@ -15,6 +15,11 @@ import (
 const maxMemory = 10 << 20
 const thumnailFileKey = "thumbnail"
 
+var acceptedThumbnailMimeTypes = map[string]bool{
+	"image/png":  true,
+	"image/jpeg": true,
+}
+
 func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Request) {
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
@@ -47,11 +52,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	mtype, err := mimetype.DetectReader(file)
-	file.Seek(0, io.SeekStart)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
 		return
 	}
+	if !acceptedThumbnailMimeTypes[mtype.String()] {
+		respondWithError(w, http.StatusBadRequest, "Thumbnail must be jpeg or png", nil)
+		return
+	}
+	file.Seek(0, io.SeekStart)
 	extension := mtype.Extension()
 	fileName := fmt.Sprintf("%s%s", videoID, extension)
 	path := filepath.Join(cfg.assetsRoot, fileName)
