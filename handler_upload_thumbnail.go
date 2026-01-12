@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,7 +64,9 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	file.Seek(0, io.SeekStart)
 	extension := mtype.Extension()
-	fileName := fmt.Sprintf("%s%s", videoID, extension)
+	randomFileName := make([]byte, 32)
+	rand.Read(randomFileName)
+	fileName := fmt.Sprintf("%s%s", base64.RawURLEncoding.EncodeToString(randomFileName), extension)
 	path := filepath.Join(cfg.assetsRoot, fileName)
 	videoMeta, err := cfg.db.GetVideo(videoID)
 	if err != nil {
