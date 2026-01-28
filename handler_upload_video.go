@@ -7,17 +7,17 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
+	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/video"
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/google/uuid"
 )
 
 const maxUploadSize = 1 >> 30
 const videoKey = "video"
-const tempFilename = "tubely-upload.mp4"
+const tempFilename = "*tubely-upload.mp4"
 
 var acceptedVideolMimeTypes = map[string]bool{
 	"video/mp4": true,
@@ -53,13 +53,13 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusUnauthorized, "User does not own targeted video", err)
 		return
 	}
-	video, _, err := r.FormFile(videoKey)
+	v, _, err := r.FormFile(videoKey)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
 		return
 	}
-	defer video.Close()
-	mtype, err := mimetype.DetectReader(video)
+	defer v.Close()
+	mtype, err := mimetype.DetectReader(v)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Unable to parse upload", err)
 		return
@@ -69,7 +69,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusBadRequest, "Video must be mp4", nil)
 		return
 	}
-	video.Seek(0, io.SeekStart)
+	v.Seek(0, io.SeekStart)
 
 	// save to temp file
 	tempFile, err := os.CreateTemp("", tempFilename)
@@ -77,17 +77,33 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Unable to create file", err)
 		return
 	}
-	defer os.Remove(path.Join(os.TempDir(), tempFile.Name()))
+
+	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
-	if _, err := io.Copy(tempFile, video); err != nil {
+	if _, err := io.Copy(tempFile, v); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to create file", err)
 		return
 	}
 	tempFile.Seek(0, io.SeekStart)
 
+	ratio, err := video.GetVideoAspectRatio(tempFile.Name())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to read metadata from video", err)
+		return
+	}
+	var prefix string
+	switch ratio {
+	case video.SixteenByNine:
+		prefix = "landscape"
+	case video.NineBySixteen:
+		prefix = "portrait"
+	default:
+		prefix = "other"
+	}
+
 	randomFileName := make([]byte, 32)
 	rand.Read(randomFileName)
-	key := fmt.Sprintf("%s%s", base64.RawURLEncoding.EncodeToString(randomFileName), mtype.Extension())
+	key := fmt.Sprintf("%s/%s%s", prefix, base64.RawURLEncoding.EncodeToString(randomFileName), mtype.Extension())
 
 	params := s3.PutObjectInput{
 		Bucket:      &cfg.s3Bucket,
